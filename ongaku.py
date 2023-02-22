@@ -3,7 +3,7 @@ import discord
 from dotenv import load_dotenv
 from discord.ext import commands
 import yt_dlp as youtube_dl
-
+from requests import get
 
 ytdl_opts = {
     'format': 'bestaudio/best', # Audio quality
@@ -38,6 +38,15 @@ bot = commands.Bot(command_prefix="!", intents=intents) # Discord interaction ob
 
 ######################## Classes ########################
 
+
+def search(query):
+    try: get(query)
+    except: info = ytdl.extract_info(f"ytsearch:{query}", download=False)['entries'][0]
+    else: info = ytdl.extract_info(query, download=False)
+    
+    return info
+
+
 class invalidchannel(commands.CheckFailure):
     pass
 
@@ -46,17 +55,21 @@ class YTDLSource(discord.PCMVolumeTransformer):
         super().__init__(source, volume)
         self.data = data
         self.title = data.get('title')
-        self.url = ""
+        self.url = data.get('url')
 
     @classmethod
     async def from_url(cls, url, *, loop=None, stream=False):
         loop = loop or asyncio.get_event_loop()
+        url = search(url)['original_url']
         data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+
         if 'entries' in data:
             # take first item from a playlist
             data = data['entries'][0]
-        filename = data['title'] if stream else ytdl.prepare_filename(data)
-        return filename
+
+        filename = data['url'] if stream else ytdl.prepare_filename(data)
+        return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
+
 
 
 ######################## Checks ########################
@@ -95,7 +108,7 @@ async def test(ctx): # if !test is sent
 
 
 @bot.command() # if !play is sent
-async def play(ctx, url):
+async def play(ctx, *, url):
     if not ctx.message.author.voice:
         await ctx.send("Please connect to a voice channel.")
         return
@@ -105,20 +118,29 @@ async def play(ctx, url):
         voice_channel = ctx.message.guild.voice_client # get the channel
 
         async with ctx.typing(): # show typing status while this process completes (basically 'loading')
-            filename = await YTDLSource.from_url(url, loop=bot.loop)
-            voice_channel.play(discord.FFmpegOpusAudio(source=filename))
+            player = await YTDLSource.from_url(url, loop=bot.loop, stream=True)
+            voice_channel.play(player)
         
-        await ctx.send("Playing: {}".format(filename))
+        await ctx.send("Playing: {}".format(player.title))
+
+
+
+
+@bot.command()
+async def stop(ctx):
+    if not ctx.message.author.voice:
+        await ctx.send("Ongaku is not playing anything.")
+        return
+    
+    else:
+        await ctx.voice_client.disconnect()
+
 
 # @bot.event()
 # async def on_message(message):
 #     if (message.channel == command_channel or message.channel == testing_channel):
 #         if message
     
-
-
-
-
 
 
 
