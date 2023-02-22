@@ -19,7 +19,8 @@ ytdl_opts = {
 }
 
 ffmpeg_options = {
-    'options': '-vn'
+    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+     'options': '-vn'
 }
 
 ytdl = youtube_dl.YoutubeDL(ytdl_opts) # make ytdl object
@@ -30,9 +31,11 @@ load_dotenv()
 intents = discord.Intents.all()
 command_channel = int(os.getenv('COMMAND_CHANNEL'))
 testing_channel = int(os.getenv('TESTING_CHANNEL'))
-intents.message_content = True
 TOKEN = os.getenv('DISCORD_TOKEN') # Get token from .env
 bot = commands.Bot(command_prefix="!", intents=intents) # Discord interaction object & load default intents
+
+
+
 
 
 
@@ -95,20 +98,16 @@ async def on_ready(): # On connect
     channel = bot.get_channel(command_channel)
     await channel.send("Ongaku Online.", delete_after=10)
 
+
+
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, invalidchannel):
         await ctx.send("Please use the Ongaku Commands channel for bot commands.", delete_after=5)
 
-######################## Command Event Handlers ########################
+######################## Player Functions ########################
 
-@bot.command()
-async def test(ctx): # if !test is sent
-    await ctx.send("Test Success", delete_after=5)
-
-
-@bot.command() # if !play is sent
-async def play(ctx, *, url):
+async def search_play(ctx, url):
     if not ctx.message.author.voice:
         await ctx.send("Please connect to a voice channel.")
         return
@@ -124,23 +123,76 @@ async def play(ctx, *, url):
         await ctx.send("Playing: {}".format(player.title))
 
 
-
-
-@bot.command()
-async def stop(ctx):
+async def stop_song(ctx):
     if not ctx.message.author.voice:
-        await ctx.send("Ongaku is not playing anything.")
+        await ctx.send("Ongaku is not connected to your voice channel.")
         return
     
     else:
         await ctx.voice_client.disconnect()
 
 
-# @bot.event()
-# async def on_message(message):
-#     if (message.channel == command_channel or message.channel == testing_channel):
-#         if message
+async def pause_song(ctx):
+    voice_client = ctx.message.guild.voice_client
+    if voice_client.is_playing():
+        await voice_client.pause()
+    else:
+        await ctx.send("Ongaku is not playing anything.")
+
+
+async def resume_song(ctx):
+    voice_client = ctx.message.guild.voice_client
+    if voice_client.is_paused():
+        await voice_client.resume()
+    else:
+        await ctx.send("No song to resume.")
     
+
+######################## Command Event Handlers ########################
+
+
+@bot.command()
+async def test(ctx): # if !test is sent
+    await ctx.send("Test Success", delete_after=5)
+    await ctx.message.delete()
+
+
+@bot.command() # if !play is sent
+async def play(ctx, *, url):
+   await search_play(ctx, url)
+   await ctx.message.delete()
+
+
+@bot.command() # if !stop is sent
+async def stop(ctx):
+    await stop_song(ctx)
+    await ctx.message.delete()
+
+
+@bot.command()
+async def pause(ctx):
+    await pause_song(ctx)
+    await ctx.message.delete()
+
+
+@bot.command()
+async def resume(ctx):
+    await resume_song(ctx)
+    await ctx.message.delete()
+
+
+
+
+######################## Message Handler ########################
+@bot.event
+async def on_message(message):
+    if (message.author.id != bot.user.id) and not (message.content.startswith('!')) :
+        if (message.channel.id == command_channel or message.channel.id == testing_channel):
+            ctx = await bot.get_context(message)
+            await search_play(ctx, message.content)
+            await message.delete()
+
+    await bot.process_commands(message) # prevents on_message from overriding on_command
 
 
 
