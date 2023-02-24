@@ -1,5 +1,6 @@
 import os
 import discord
+import asyncio
 from dotenv import load_dotenv
 from discord.ext import commands
 import yt_dlp as youtube_dl
@@ -26,6 +27,8 @@ ffmpeg_options = {
 ytdl = youtube_dl.YoutubeDL(ytdl_opts) # make ytdl object
 
 
+
+
 # Initialize discord API objects
 load_dotenv()
 intents = discord.Intents.all()
@@ -42,12 +45,21 @@ bot = commands.Bot(command_prefix="!", intents=intents) # Discord interaction ob
 ######################## Classes ########################
 
 
+
+
+
 def search(query):
     try: get(query)
     except: info = ytdl.extract_info(f"ytsearch:{query}", download=False)['entries'][0]
     else: info = ytdl.extract_info(query, download=False)
     
     return info
+
+class playbackUI(discord.ui.View):
+    
+    @discord.ui.button(label="Play", style=discord.ButtonStyle.success)
+    async def playbutton(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await resume_song(interaction)
 
 
 class invalidchannel(commands.CheckFailure):
@@ -127,10 +139,12 @@ async def on_ready(): # On connect
     messages = [msg async for msg in channel.history(limit=100, oldest_first=True)]
 
     for msg in messages:
-        msg.delete()
+        await msg.delete()
 
     embed = generate_embed() 
-    bot.global_embed = await channel.send(embed=embed)
+
+    view = playbackUI()
+    bot.global_embed = await channel.send(embed=embed, view=view)
 
 
 @bot.event
@@ -159,12 +173,13 @@ async def get_song(ctx, url):
         return player    
         
 
-def dequeue_and_play(ctx):
+async def dequeue_and_play(ctx):
     if (q.len >= 1):
         source = q.pop()
         voice_channel = ctx.message.guild.voice_client
-        voice_channel.play(source, after=lambda e: dequeue_and_play(ctx))
-        generate_embed(ctx, q, source)
+        voice_channel.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(dequeue_and_play(ctx), bot.loop))
+        embed = generate_embed(ctx, q, source)
+        await bot.global_embed.edit(embed=embed, components=components)
         
 
 
@@ -184,18 +199,18 @@ async def search_play(ctx, url):
             await bot.global_embed.edit(embed = generate_embed(ctx, q, player=voice_channel.source))
 
         else:
-            voice_channel.play(player, after=lambda e: dequeue_and_play(ctx))
+            voice_channel.play(player, after=lambda e: asyncio.run_coroutine_threadsafe(dequeue_and_play(ctx), bot.loop))
             #await ctx.send("Playing: {}".format(player.title))
             await bot.global_embed.edit(embed = generate_embed(ctx, queue=q, player=player))
+            print(player.data)
     
 
 async def stop_song(ctx):
-    if not ctx.message.author.voice:
-        await ctx.send("Ongaku is not connected to your voice channel.")
-        return
-    
+    voice_client = ctx.message.guild.voice_client
+    if voice_client.is_playing():
+        await voice_client.stop()
     else:
-        await ctx.voice_client.disconnect()
+        await ctx.send("Ongaku is not playing anything.", delete_after=5)
 
 
 async def pause_song(ctx):
@@ -203,7 +218,7 @@ async def pause_song(ctx):
     if voice_client.is_playing():
         await voice_client.pause()
     else:
-        await ctx.send("Ongaku is not playing anything.")
+        await ctx.send("Ongaku is not playing anything.", delete_after=5)
 
 
 async def resume_song(ctx):
@@ -211,8 +226,16 @@ async def resume_song(ctx):
     if voice_client.is_paused():
         await voice_client.resume()
     else:
-        await ctx.send("No song to resume.")
+        await ctx.send("No song to resume.", delete_after=5)
     
+
+async def disconnect_bot(ctx):
+    if not ctx.message.author.voice:
+        await ctx.send("Ongaku is not connected to your voice channel.", delete_after=5)
+        return
+    
+    else:
+        await ctx.voice_client.disconnect()
 
 ######################## Command Event Handlers ########################
 
@@ -235,6 +258,12 @@ async def stop(ctx):
     await ctx.message.delete()
 
 
+@bot.command() # if !stop is sent
+async def leave(ctx):
+    await disconnect_bot(ctx)
+    await ctx.message.delete()
+
+
 @bot.command()
 async def pause(ctx):
     await pause_song(ctx)
@@ -248,9 +277,13 @@ async def resume(ctx):
 
 @bot.command()
 async def next(ctx):
-    await pause_song(ctx)
-    await dequeue_and_play(ctx)
-    await ctx.message.delete()
+    if q.display():
+        await stop_song(ctx)
+        await dequeue_and_play(ctx)
+        await ctx.message.delete()
+    
+    else:
+        await ctx.send("No next item in queue", delete_after=5)
 
 ######################## Embed ########################
 
@@ -262,9 +295,10 @@ def generate_embed(ctx=None, queue=q, player=None):
 
 
     else:    
-        embed = discord.Embed(title=player.title, url=player.url, color=discord.Colour.teal(), description="Queue:")
+        embed = discord.Embed(title=player.title, url=player.data['original_url'], color=discord.Colour.teal(), description="Queue:")
         embed.set_image(url=player.data['thumbnail'])
         embed.set_author(name=ctx.message.author)
+        embed.set_footer(text=player.data['duration_string'])
 
         current_queue = queue.display()
         print
