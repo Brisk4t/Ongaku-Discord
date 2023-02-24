@@ -55,11 +55,40 @@ def search(query):
     
     return info
 
+
+
+# class playbackButtons(discord.ui.Button):
+#     def setup(self, data):
+#         self.label = data['label']
+#         self.custom_id = data['custom_id']
+#         self.ctx = data['ctx']
+
+#     async def callback(self, interaction=discord.Interaction):
+#         await resume_song(self.ctx)
+
+
 class playbackUI(discord.ui.View):
-    
-    @discord.ui.button(label="Play", style=discord.ButtonStyle.success)
+    ctx : None
+
+    @discord.ui.button(label=None, emoji=":play512:1078651539230564362", style=discord.ButtonStyle.success)
     async def playbutton(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await resume_song(interaction)
+        await interaction.response.defer()
+        await resume_song(self.ctx)
+   
+    @discord.ui.button(label=None, emoji=":pause256:1078650829227180064",  style=discord.ButtonStyle.danger)
+    async def pausebutton(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        await pause_song(self.ctx)
+
+    @discord.ui.button(label=None, emoji=":hydra_stop:971015680696672356", style=discord.ButtonStyle.secondary)
+    async def stopbutton(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        await stop_song(self.ctx)
+
+    @discord.ui.button(label=None, emoji=":hydra_skip:971015680654729216", style=discord.ButtonStyle.secondary)
+    async def nextbutton(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        await next_song(self.ctx)
 
 
 class invalidchannel(commands.CheckFailure):
@@ -142,8 +171,8 @@ async def on_ready(): # On connect
         await msg.delete()
 
     embed = generate_embed() 
-
     view = playbackUI()
+    view.ctx = channel
     bot.global_embed = await channel.send(embed=embed, view=view)
 
 
@@ -179,7 +208,7 @@ async def dequeue_and_play(ctx):
         voice_channel = ctx.message.guild.voice_client
         voice_channel.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(dequeue_and_play(ctx), bot.loop))
         embed = generate_embed(ctx, q, source)
-        await bot.global_embed.edit(embed=embed, components=components)
+        await bot.global_embed.edit(embed=embed)
         
 
 
@@ -188,6 +217,8 @@ async def search_play(ctx, url):
     await join(ctx) # wait to join voice channel
     voice_channel = ctx.message.guild.voice_client # get the channel
     
+    view = playbackUI()
+    view.ctx = ctx
     
     async with ctx.typing(): # show typing status while this process completes (basically 'loading')
         player = await get_song(ctx, url)
@@ -196,12 +227,16 @@ async def search_play(ctx, url):
             q.push(player) # add it to the queue
             print(q.display())
             #await ctx.send("Added {} to queue".format(player.title))
-            await bot.global_embed.edit(embed = generate_embed(ctx, q, player=voice_channel.source))
+            view = playbackUI()
+            view.ctx = ctx
+            await bot.global_embed.edit(embed = generate_embed(ctx, q, player=voice_channel.source), view=view)
 
         else:
             voice_channel.play(player, after=lambda e: asyncio.run_coroutine_threadsafe(dequeue_and_play(ctx), bot.loop))
             #await ctx.send("Playing: {}".format(player.title))
-            await bot.global_embed.edit(embed = generate_embed(ctx, queue=q, player=player))
+            view = playbackUI()
+            view.ctx = ctx
+            await bot.global_embed.edit(embed = generate_embed(ctx, queue=q, player=player), view=view)
             print(player.data)
     
 
@@ -217,7 +252,8 @@ async def pause_song(ctx):
     voice_client = ctx.message.guild.voice_client
     if voice_client.is_playing():
         await voice_client.pause()
-    else:
+    
+    elif not voice_client.is_playing and not voice_client.is_paused:
         await ctx.send("Ongaku is not playing anything.", delete_after=5)
 
 
@@ -225,8 +261,19 @@ async def resume_song(ctx):
     voice_client = ctx.message.guild.voice_client
     if voice_client.is_paused():
         await voice_client.resume()
-    else:
+    
+    elif not voice_client.is_paused() and not voice_client.is_playing:
         await ctx.send("No song to resume.", delete_after=5)
+
+
+async def next_song(ctx):
+    if q.display():
+        await stop_song(ctx)
+        await dequeue_and_play(ctx)
+        
+    
+    else:
+        await ctx.send("No next item in queue", delete_after=5)
     
 
 async def disconnect_bot(ctx):
@@ -242,48 +289,49 @@ async def disconnect_bot(ctx):
 
 @bot.command()
 async def test(ctx): # if !test is sent
-    await ctx.send("Test Success", delete_after=5)
     await ctx.message.delete()
+    await ctx.send("Test Success", delete_after=5)
+
 
 
 @bot.command() # if !play is sent
 async def play(ctx, *, url):
-   await search_play(ctx, url)
    await ctx.message.delete()
+   await search_play(ctx, url)
+   
 
 
 @bot.command() # if !stop is sent
 async def stop(ctx):
-    await stop_song(ctx)
     await ctx.message.delete()
+    await stop_song(ctx)
+    
 
 
 @bot.command() # if !stop is sent
 async def leave(ctx):
-    await disconnect_bot(ctx)
     await ctx.message.delete()
+    await disconnect_bot(ctx)
+    
 
 
 @bot.command()
 async def pause(ctx):
-    await pause_song(ctx)
     await ctx.message.delete()
+    await pause_song(ctx)
+    
 
 
 @bot.command()
 async def resume(ctx):
-    await resume_song(ctx)
     await ctx.message.delete()
+    await resume_song(ctx)
+    
 
 @bot.command()
 async def next(ctx):
-    if q.display():
-        await stop_song(ctx)
-        await dequeue_and_play(ctx)
-        await ctx.message.delete()
-    
-    else:
-        await ctx.send("No next item in queue", delete_after=5)
+    await ctx.message.delete()
+    await next_song(ctx)
 
 ######################## Embed ########################
 
@@ -304,14 +352,18 @@ def generate_embed(ctx=None, queue=q, player=None):
         print
 
         for i in range(len(current_queue)): # Add queue items as fields
-            if i <= 25:
+            if i < 25:
                 embed.add_field(name=current_queue[i], value="", inline=False)
+
+            elif i==25:
+                embed.add_field(name="..........", value="", inline=False)
 
     return embed
 
 
-
 ######################## Message Handler ########################
+
+
 @bot.event
 async def on_message(message):
     if (message.author.id != bot.user.id) and not (message.content.startswith('!')) :
