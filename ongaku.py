@@ -74,6 +74,30 @@ class YTDLSource(discord.PCMVolumeTransformer):
         return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
 
 
+class queue():
+    def __init__(self):
+        self.song_queue = []
+        self.len = 0
+    
+    def pop(self):
+        self.len -= 1
+        return self.song_queue.pop(0)
+        
+
+
+    def push(self, player):
+        self.len += 1
+        self.song_queue.append(player)
+        
+    def length(self):
+        return self.len
+
+    def display(self): # returns a alist of the song titles
+        titles = []
+        for song in self.song_queue:
+            titles.append(song.title) 
+
+        return titles
 
 ######################## Checks ########################
 
@@ -92,12 +116,21 @@ async def checkchannel(ctx):
 
 ########################### Event Handlers ###########################
 
+bot.global_embed = None
+
 @bot.event
 async def on_ready(): # On connect 
     print(f'{bot.user} has connected to discord')
     channel = bot.get_channel(command_channel)
-    await channel.send("Ongaku Online.", delete_after=10)
 
+    #iterator = channel.history(limit = 5, oldest_first=True)
+    messages = [msg async for msg in channel.history(limit=100, oldest_first=True)]
+
+    for msg in messages:
+        msg.delete()
+
+    embed = generate_embed() 
+    bot.global_embed = await channel.send(embed=embed)
 
 
 @bot.event
@@ -107,21 +140,54 @@ async def on_command_error(ctx, error):
 
 ######################## Player Functions ########################
 
-async def search_play(ctx, url):
-    if not ctx.message.author.voice:
-        await ctx.send("Please connect to a voice channel.")
+q = queue() # instantiate a queue
+
+async def join(ctx):
+    if not ctx.message.author.voice: # if the message author is not in a voice channel
+        await ctx.send("Please connect to a voice channel.", delete_after=5)
         return
     
-    else:
+    elif not ctx.guild.voice_client in bot.voice_clients: # if the bot is not connected
         await ctx.message.author.voice.channel.connect() # connect to the same channel as author
-        voice_channel = ctx.message.guild.voice_client # get the channel
-
-        async with ctx.typing(): # show typing status while this process completes (basically 'loading')
-            player = await YTDLSource.from_url(url, loop=bot.loop, stream=True)
-            voice_channel.play(player)
         
-        await ctx.send("Playing: {}".format(player.title))
+    return
 
+
+
+async def get_song(ctx, url):
+        player = await YTDLSource.from_url(url, loop=bot.loop, stream=True) # AudioSource Object
+        return player    
+        
+
+def dequeue_and_play(ctx):
+    if (q.len >= 1):
+        source = q.pop()
+        voice_channel = ctx.message.guild.voice_client
+        voice_channel.play(source, after=lambda e: dequeue_and_play(ctx))
+        generate_embed(ctx, q, source)
+        
+
+
+async def search_play(ctx, url):
+
+    await join(ctx) # wait to join voice channel
+    voice_channel = ctx.message.guild.voice_client # get the channel
+    
+    
+    async with ctx.typing(): # show typing status while this process completes (basically 'loading')
+        player = await get_song(ctx, url)
+
+        if voice_channel.is_playing(): # if a song is playing 
+            q.push(player) # add it to the queue
+            print(q.display())
+            #await ctx.send("Added {} to queue".format(player.title))
+            await bot.global_embed.edit(embed = generate_embed(ctx, q, player=voice_channel.source))
+
+        else:
+            voice_channel.play(player, after=lambda e: dequeue_and_play(ctx))
+            #await ctx.send("Playing: {}".format(player.title))
+            await bot.global_embed.edit(embed = generate_embed(ctx, queue=q, player=player))
+    
 
 async def stop_song(ctx):
     if not ctx.message.author.voice:
@@ -180,6 +246,34 @@ async def resume(ctx):
     await resume_song(ctx)
     await ctx.message.delete()
 
+@bot.command()
+async def next(ctx):
+    await pause_song(ctx)
+    await dequeue_and_play(ctx)
+    await ctx.message.delete()
+
+######################## Embed ########################
+
+def generate_embed(ctx=None, queue=q, player=None):
+
+    if not player:
+        embed = discord.Embed(title="No Song Playing", color=discord.Colour.teal(), description="Queue Empty")
+
+
+
+    else:    
+        embed = discord.Embed(title=player.title, url=player.url, color=discord.Colour.teal(), description="Queue:")
+        embed.set_image(url=player.data['thumbnail'])
+        embed.set_author(name=ctx.message.author)
+
+        current_queue = queue.display()
+        print
+
+        for i in range(len(current_queue)): # Add queue items as fields
+            if i <= 25:
+                embed.add_field(name=current_queue[i], value="", inline=False)
+
+    return embed
 
 
 
@@ -190,7 +284,7 @@ async def on_message(message):
         if (message.channel.id == command_channel or message.channel.id == testing_channel):
             ctx = await bot.get_context(message)
             await search_play(ctx, message.content)
-            await message.delete()
+            await ctx.message.delete()
 
     await bot.process_commands(message) # prevents on_message from overriding on_command
 
