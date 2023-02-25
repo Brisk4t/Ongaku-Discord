@@ -140,6 +140,14 @@ class queue():
 
         return titles
 
+
+
+# class MusicPlayer():
+
+#     def __init__(self):
+#         self. 
+
+
 ######################## Checks ########################
 
 
@@ -187,6 +195,7 @@ q = queue() # instantiate a queue
 
 async def join(ctx):
     if not ctx.message.author.voice: # if the message author is not in a voice channel
+        await ctx.message.delete()
         await ctx.send("Please connect to a voice channel.", delete_after=5)
         return
     
@@ -237,7 +246,6 @@ async def search_play(ctx, url):
             view = playbackUI()
             view.ctx = ctx
             await bot.global_embed.edit(embed = generate_embed(ctx, queue=q, player=player), view=view)
-            print(player.data)
     
 
 async def stop_song(ctx):
@@ -274,6 +282,10 @@ async def next_song(ctx):
     
     else:
         await ctx.send("No next item in queue", delete_after=5)
+
+
+# async def seek(ctx, time):
+    
     
 
 async def disconnect_bot(ctx):
@@ -349,7 +361,6 @@ def generate_embed(ctx=None, queue=q, player=None):
         embed.set_footer(text=player.data['duration_string'])
 
         current_queue = queue.display()
-        print
 
         for i in range(len(current_queue)): # Add queue items as fields
             if i < 25:
