@@ -37,6 +37,10 @@ TOKEN = os.getenv('DISCORD_TOKEN') # Get token from .env
 bot = commands.Bot(command_prefix="!", intents=intents) # Discord interaction object & load default intents
 
 
+bot.command_channels = []
+bot.global_embeds = {}
+bot.music_players = {}
+
 
 ######################## Classes ########################
 class queue():
@@ -88,7 +92,7 @@ class MusicPlayer():
             voice_channel = ctx.message.guild.voice_client
             voice_channel.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(self.dequeue_and_play(ctx), bot.loop))
             embed = generate_embed(ctx, self.queue, source)
-            await bot.global_embed.edit(embed=embed)
+            await bot.global_embeds[ctx.guild.id].edit(embed=embed)
             
 
 
@@ -97,28 +101,25 @@ class MusicPlayer():
         await self.join(ctx) # wait to join voice channel
         voice_channel = ctx.message.guild.voice_client # get the channel
         
-        view = playbackUI()
+        view = playbackUI(timeout=None)
         view.ctx = ctx
+        view.musicplayer = bot.music_players[ctx.guild.id]
         
         async with ctx.typing(): # show typing status while this process completes (basically 'loading')
            
-            player = await YTDLSource.from_url(url, loop=bot.loop, stream=True) # AudioSource Object
+            player = await YTDLSource.from_url(url, loop=bot.loop, stream=True, ctx=ctx) # AudioSource Object
 
             if voice_channel.is_playing() or voice_channel.is_paused(): # if a song is playing or is paused
                 
                 self.queue.push(player) # add it to the queue
                 print(self.queue.display())
                 #await ctx.send("Added {} to queue".format(player.title))
-                view = playbackUI()
-                view.ctx = ctx
-                await bot.global_embed.edit(embed = generate_embed(ctx, self.queue, player=voice_channel.source), view=view)
+                await bot.global_embeds[ctx.guild.id].edit(embed = generate_embed(ctx, self.queue, player=voice_channel.source), view=view)
 
             else:
                 voice_channel.play(player, after=lambda e: asyncio.run_coroutine_threadsafe(self.dequeue_and_play(ctx), bot.loop))
                 #await ctx.send("Playing: {}".format(player.title))
-                view = playbackUI()
-                view.ctx = ctx
-                await bot.global_embed.edit(embed = generate_embed(ctx, queue=self.queue, player=player), view=view)
+                await bot.global_embeds[ctx.guild.id].edit(embed = generate_embed(ctx, queue=self.queue, player=player), view=view)
         
 
     async def stop_song(self, ctx):
@@ -173,8 +174,6 @@ class MusicPlayer():
         return info
 
 
-musicplayer=MusicPlayer()
-
 
 class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data, volume=0.5):
@@ -184,7 +183,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
         self.url = data.get('url')
 
     @classmethod
-    async def from_url(cls, url, *, loop=None, stream=False):
+    async def from_url(cls, url, *, loop=None, stream=False, ctx):
         loop = loop or asyncio.get_event_loop()
        
         try: get(url) # check if the url is valid or is a search query
@@ -207,7 +206,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
                     data_queue = (data['entries'][item]) # queue the remaining items
                     filename = data_queue['url'] if stream else ytdl.prepare_filename(data_queue)
                     player_queue = cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data_queue)
-                    musicplayer.queue.push(player_queue)
+                    bot.music_players[ctx.guild.id].queue.push(player_queue)
 
 
         else: 
@@ -218,27 +217,28 @@ class YTDLSource(discord.PCMVolumeTransformer):
 
 
 class playbackUI(discord.ui.View):
-    ctx : None
+    ctx = None
+    musicplayer = None
 
     @discord.ui.button(label=None, emoji=":play512:1078651539230564362", style=discord.ButtonStyle.success)
     async def playbutton(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        await musicplayer.resume_song(self.ctx)
+        await self.musicplayer.resume_song(self.ctx)
    
     @discord.ui.button(label=None, emoji=":pause256:1078650829227180064",  style=discord.ButtonStyle.danger)
     async def pausebutton(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        await musicplayer.pause_song(self.ctx)
+        await self.musicplayer.pause_song(self.ctx)
 
     @discord.ui.button(label=None, emoji=":hydra_stop:971015680696672356", style=discord.ButtonStyle.secondary)
     async def stopbutton(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        await musicplayer.stop_song(self.ctx)
+        await self.musicplayer.stop_song(self.ctx)
 
     @discord.ui.button(label=None, emoji=":hydra_skip:971015680654729216", style=discord.ButtonStyle.secondary)
     async def nextbutton(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        await musicplayer.next_song(self.ctx)
+        await self.musicplayer.next_song(self.ctx)
 
 
 class invalidchannel(commands.CheckFailure):
@@ -249,39 +249,60 @@ class invalidchannel(commands.CheckFailure):
 ######################## Checks ########################
 
 
+# def check_channel():
+#     def predicate(ctx):
+#         if not (ctx.channel.id == command_channel or ctx.channel.id == testing_channel):
+#             return False
+#     return commands.check(predicate)
+
+
 def check_channel():
     def predicate(ctx):
-        if not (ctx.channel.id == command_channel or ctx.channel.id == testing_channel):
+        if not (ctx.channel.id in bot.command_channels):
             return False
     return commands.check(predicate)
 
 
 @bot.check
 async def checkchannel(ctx):
-    if not (ctx.channel.id == command_channel or ctx.channel.id == testing_channel):
+    if not (ctx.channel.id in bot.command_channels or ctx.channel.id == testing_channel):
             raise invalidchannel("Invalid Channel")
     return True
 
 
 ########################### Event Handlers ###########################
 
-bot.global_embed = None
+
 
 @bot.event
 async def on_ready(): # On connect 
+
+
+    for guild in bot.guilds:
+        
+        bot.command_channels.append((discord.utils.get(guild.channels, name="ongaku-commands")).id)
+        bot.music_players[guild.id]= MusicPlayer()
+
+    print(bot.command_channels)
+
     print(f'{bot.user} has connected to discord')
-    channel = bot.get_channel(command_channel)
+    
 
-    #iterator = channel.history(limit = 5, oldest_first=True)
-    messages = [msg async for msg in channel.history(limit=100, oldest_first=True)]
+    for item in bot.command_channels:
+        channel = bot.get_channel(item)
 
-    for msg in messages:
-        await msg.delete()
+        #iterator = channel.history(limit = 5, oldest_first=True)
+        messages = [msg async for msg in channel.history(limit=100, oldest_first=True)]
 
-    embed = generate_embed() 
-    view = playbackUI()
-    view.ctx = channel
-    bot.global_embed = await channel.send(embed=embed, view=view)
+        for msg in messages:
+            await msg.delete()
+
+        embed = generate_embed() 
+        view = playbackUI(timeout=None)
+        view.musicplayer=bot.music_players[channel.guild.id]
+        view.ctx = channel
+        bot.global_embeds[channel.guild.id] = await channel.send(embed=embed, view=view)
+
 
 
 
@@ -295,9 +316,9 @@ async def on_command_error(ctx, error):
 @bot.event
 async def on_message(message):
     if (message.author.id != bot.user.id) and not (message.content.startswith('!')) : # If the message is not sent by the bot and is not a command
-        if (message.channel.id == command_channel or message.channel.id == testing_channel): # if the message is sent in the command or testing channel
+        if (message.channel.id in bot.command_channels or message.channel.id == testing_channel): # if the message is sent in the command or testing channel
             ctx = await bot.get_context(message) # Get message
-            await musicplayer.search_play(ctx, message.content)
+            await bot.music_players[ctx.guild.id].search_play(ctx, message.content)
             await ctx.message.delete()
 
     await bot.process_commands(message) # prevents on_message from overriding on_command
@@ -314,41 +335,41 @@ async def test(ctx): # if !test is sent
 @bot.command() # if !play is sent
 async def play(ctx, *, url):
    await ctx.message.delete()
-   await musicplayer.search_play(ctx, url)
+   await bot.music_players[ctx.guild.id].search_play(ctx, url)
    
 
 
 @bot.command() # if !stop is sent
 async def stop(ctx):
     await ctx.message.delete()
-    await musicplayer.stop_song(ctx)
+    await bot.music_players[ctx.guild.id].stop_song(ctx)
     
 
 
 @bot.command() # if !stop is sent
 async def leave(ctx):
     await ctx.message.delete()
-    await musicplayer.disconnect_bot(ctx)
+    await bot.music_players[ctx.guild.id].disconnect_bot(ctx)
     
 
 
 @bot.command()
 async def pause(ctx):
     await ctx.message.delete()
-    await musicplayer.pause_song(ctx)
+    await bot.music_players[ctx.guild.id].pause_song(ctx)
     
 
 
 @bot.command()
 async def resume(ctx):
     await ctx.message.delete()
-    await musicplayer.resume_song(ctx)
+    await bot.music_players[ctx.guild.id].resume_song(ctx)
     
 
 @bot.command()
 async def next(ctx):
     await ctx.message.delete()
-    await musicplayer.next_song(ctx)
+    await bot.music_players[ctx.guild.id].next_song(ctx)
 
 
 
@@ -356,7 +377,7 @@ async def next(ctx):
 
 ######################## Embed ########################
 
-def generate_embed(ctx=None, queue=musicplayer.queue, player=None):
+def generate_embed(ctx=None, queue=None, player=None):
 
     if not player:
         embed = discord.Embed(title="No Song Playing", color=discord.Colour.teal(), description="Queue Empty")
@@ -366,7 +387,7 @@ def generate_embed(ctx=None, queue=musicplayer.queue, player=None):
     else:    
         embed = discord.Embed(title=player.title, url=player.data['original_url'], color=discord.Colour.teal(), description="Queue:")
         embed.set_image(url=player.data['thumbnail'])
-        embed.set_author(name=ctx.message.author)
+        embed.set_author(name=("Last Command: {}".format(ctx.message.author)))
         embed.set_footer(text=player.data['duration_string'])
 
         current_queue = queue.display()
