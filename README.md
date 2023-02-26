@@ -1,6 +1,6 @@
 <div id="user-content-toc">
   <ul align="center">
-    <summary><h1 align="center" style="display: inline-block;">Ongaku</h1></summary>
+    <summary><h1 align="center" style="display: inline-block;">Ongaku - Discord Music Bot</h1></summary>
   </ul>
 </div>
 
