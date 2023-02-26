@@ -19,3 +19,9 @@
 * Minimalist Button Controls
 * Supports multiple server deployment
 * Easy to deploy using docker image
+
+
+<h2> Installation </h2>
+
+* Make a text channel called ongaku-commands
+* Invite the bot to the server
