@@ -157,13 +157,17 @@ class MusicPlayer():
         else:
             await ctx.send("No next item in queue", delete_after=5)
 
-    async def disconnect_bot(ctx):
+    async def disconnect_bot(self, ctx):
+        print("I am here")
         if not ctx.message.author.voice:
+            print("I am here2")
             await ctx.send("Ongaku is not connected to your voice channel.", delete_after=5)
             return
         
         else:
-            await ctx.voice_client.disconnect()
+            print("I am here3")
+            await ctx.guild.voice_client.disconnect()
+            print("Here")
 
 
     def search(self, query):
@@ -325,48 +329,48 @@ async def on_message(message):
 
 
 
-@bot.command()
+@bot.command(brief='Responds with a test message', category="Playback")
 async def test(ctx): # if !test is sent
     await ctx.message.delete()
     await ctx.send("Test Success", delete_after=5)
 
 
 
-@bot.command() # if !play is sent
+@bot.command(brief='Play song from search query or url') # if !play is sent
 async def play(ctx, *, url):
    await ctx.message.delete()
    await bot.music_players[ctx.guild.id].search_play(ctx, url)
    
 
 
-@bot.command() # if !stop is sent
+@bot.command(brief='Stop song playback') # if !stop is sent
 async def stop(ctx):
     await ctx.message.delete()
     await bot.music_players[ctx.guild.id].stop_song(ctx)
     
 
 
-@bot.command() # if !stop is sent
+@bot.command(brief="Disconnect from voice channel") # if !leave is sent
 async def leave(ctx):
     await ctx.message.delete()
     await bot.music_players[ctx.guild.id].disconnect_bot(ctx)
-    
+   
 
 
-@bot.command()
+@bot.command(brief='Pause song playback')
 async def pause(ctx):
     await ctx.message.delete()
     await bot.music_players[ctx.guild.id].pause_song(ctx)
     
 
 
-@bot.command()
+@bot.command(brief="Resume playback")
 async def resume(ctx):
     await ctx.message.delete()
     await bot.music_players[ctx.guild.id].resume_song(ctx)
     
 
-@bot.command()
+@bot.command(brief="Next song")
 async def next(ctx):
     await ctx.message.delete()
     await bot.music_players[ctx.guild.id].next_song(ctx)
