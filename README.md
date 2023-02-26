@@ -15,7 +15,7 @@
 
 <h2> ✨ Features </h2>
 
-* Support URL and Search playback
+* Supports URL and Search playback
 * Minimalist Button Controls
 * Supports multiple server deployment
 * Easy to deploy using docker image
