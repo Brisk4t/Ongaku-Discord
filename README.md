@@ -13,6 +13,9 @@
 
 </p>
 
-<h3> Personal Music Bot for Discord </h3>
+<h2> ✨ Features </h2>
 
-Plays music on voice channel based on URL or search query.
+* Support URL and Search playback
+* Minimalist Button Controls
+* Supports multiple server deployment
+* Easy to deploy using docker image
