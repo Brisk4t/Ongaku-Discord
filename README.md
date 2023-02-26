@@ -11,5 +11,6 @@
         <img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" /></a>
         <img src="https://img.shields.io/badge/Docker-2CA5E0?style=for-the-badge&logo=docker&logoColor=white" /></a>
 
-Personal Music Bot for Discord
 </p>
+
+Personal Music Bot for Discord
