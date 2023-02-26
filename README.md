@@ -13,4 +13,6 @@
 
 </p>
 
-Personal Music Bot for Discord
+<h3> Personal Music Bot for Discord </h3>
+
+Plays music on voice channel based on URL or search query.
