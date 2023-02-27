@@ -37,9 +37,6 @@ TOKEN = os.getenv('DISCORD_TOKEN') # Get token from .env
 bot = commands.Bot(command_prefix="!", intents=intents) # Discord interaction object & load default intents
 
 
-bot.command_channels = []
-bot.global_embeds = {}
-bot.music_players = {}
 
 
 ######################## Classes ########################
@@ -278,8 +275,10 @@ async def checkchannel(ctx):
 
 
 
-@bot.event
-async def on_ready(): # On connect 
+async def setup():
+    bot.command_channels = []
+    bot.global_embeds = {}
+    bot.music_players = {}
 
 
     for guild in bot.guilds:
@@ -306,6 +305,12 @@ async def on_ready(): # On connect
         view.musicplayer=bot.music_players[channel.guild.id]
         view.ctx = channel
         bot.global_embeds[channel.guild.id] = await channel.send(embed=embed, view=view)
+
+
+
+@bot.event
+async def on_ready(): # On connect 
+    await setup()
 
 
 
@@ -376,7 +381,10 @@ async def next(ctx):
     await bot.music_players[ctx.guild.id].next_song(ctx)
 
 
-
+@bot.command(hidden=True)
+async def reset(ctx):
+    if(ctx.author.id == ctx.guild.owner):
+        await setup()
 
 
 ######################## Embed ########################
