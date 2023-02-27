@@ -384,7 +384,9 @@ async def next(ctx):
 @bot.command(hidden=True)
 async def reset(ctx):
     if(ctx.author.id == ctx.guild.owner):
+        await ctx.message.delete()
         await setup()
+        
 
 
 ######################## Embed ########################
