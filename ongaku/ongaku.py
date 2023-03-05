@@ -33,8 +33,8 @@ load_dotenv()
 intents = discord.Intents.all()
 testing_channel = int(os.getenv('TESTING_CHANNEL'))
 TOKEN = os.getenv('DISCORD_TOKEN') # Get token from .env
-bot = commands.Bot(command_prefix="!", intents=intents) # Discord interaction object & load default intents
-
+bot = commands.Bot(command_prefix="/", intents=intents) # Discord interaction object & load default intents
+bot.environments = "ongaku-dev"
 
 
 
@@ -281,8 +281,8 @@ async def setup():
 
 
     for guild in bot.guilds:
-        
-        bot.command_channels.append((discord.utils.get(guild.channels, name="ongaku-commands")).id)
+
+        bot.command_channels.append((discord.utils.get(guild.channels, name=bot.environments)).id)
         bot.music_players[guild.id]= MusicPlayer()
 
     print(bot.command_channels)
@@ -307,11 +307,10 @@ async def setup():
 
 
 
+
 @bot.event
 async def on_ready(): # On connect 
     await setup()
-
-
 
 
 @bot.event
@@ -320,10 +319,9 @@ async def on_command_error(ctx, error):
         await ctx.send("Please use the Ongaku Commands channel for bot commands.", delete_after=5)
 
 
-
 @bot.event
 async def on_message(message):
-    if (message.author.id != bot.user.id) and not (message.content.startswith('!')) : # If the message is not sent by the bot and is not a command
+    if (message.author.id != bot.user.id) and not (message.content.startswith('/')) : # If the message is not sent by the bot and is not a command
         if (message.channel.id in bot.command_channels or message.channel.id == testing_channel): # if the message is sent in the command or testing channel
             ctx = await bot.get_context(message) # Get message
             await bot.music_players[ctx.guild.id].search_play(ctx, message.content)
@@ -382,9 +380,9 @@ async def next(ctx):
 
 @bot.command(hidden=True)
 async def reset(ctx):
-    if(ctx.author.id == ctx.guild.owner):
-        await ctx.message.delete()
-        await setup()
+    # if(ctx.author.id == ctx.guild.owner):
+    await ctx.message.delete()
+    await setup()
         
 
 
