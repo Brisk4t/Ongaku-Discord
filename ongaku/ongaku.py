@@ -38,7 +38,6 @@ bot = commands.Bot(command_prefix=command_prefix, intents=intents) # Discord int
 
 
 
-
 ######################## Classes ########################
 class queue():
     def __init__(self):
@@ -108,25 +107,15 @@ class MusicPlayer():
         
         async with ctx.typing(): # show typing status while this process completes (basically 'loading')
            
-            player = await YTDLSource.from_url(url, loop=bot.loop, stream=True, ctx=ctx) # AudioSource Object
-
-            if voice_channel.is_playing() or voice_channel.is_paused(): # if a song is playing or is paused
-                
-                self.queue.push(player) # add it to the queue
-                print(self.queue.display())
-                #await ctx.send("Added {} to queue".format(player.title))
-                await bot.global_embeds[ctx.guild.id].edit(embed = generate_embed(ctx, self.queue, player=voice_channel.source), view=view)
-
-            else:
-                voice_channel.play(player, after=lambda e: asyncio.run_coroutine_threadsafe(self.dequeue_and_play(ctx), bot.loop))
-                #await ctx.send("Playing: {}".format(player.title))
-                await bot.global_embeds[ctx.guild.id].edit(embed = generate_embed(ctx, queue=self.queue, player=player), view=view)
+            await YTDLSource.build_queue(url, loop=bot.loop, stream=True, ctx=ctx) # AudioSource Object
+            await bot.global_embeds[ctx.guild.id].edit(embed = generate_embed(ctx, self.queue, player=voice_channel.source), view=view)
         
+
 
     async def stop_song(self, ctx):
         voice_client = ctx.message.guild.voice_client
         if voice_client.is_playing():
-            await voice_client.stop()
+            voice_client.stop()
         else:
             await ctx.send("Ongaku is not playing anything.", delete_after=5)
 
@@ -134,7 +123,7 @@ class MusicPlayer():
     async def pause_song(self, ctx):
         voice_client = ctx.message.guild.voice_client
         if voice_client.is_playing():
-            await voice_client.pause()
+            voice_client.pause()
         
         elif not voice_client.is_playing and not voice_client.is_paused:
             await ctx.send("Ongaku is not playing anything.", delete_after=5)
@@ -143,7 +132,7 @@ class MusicPlayer():
     async def resume_song(self, ctx):
         voice_client = ctx.message.guild.voice_client
         if voice_client.is_paused():
-            await voice_client.resume()
+            voice_client.resume()
         
         elif not voice_client.is_paused() and not voice_client.is_playing:
             await ctx.send("No song to resume.", delete_after=5)
@@ -171,14 +160,6 @@ class MusicPlayer():
             print("Here")
 
 
-    def search(self, query):
-        try: get(query) # try querying for url
-        except: info = ytdl.extract_info(f"ytsearch:{query}", download=False)['entries'][0] # if query is not url
-        else: info = ytdl.extract_info(query, download=False) # if query is url
-        
-        return info
-
-
 
 class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data, volume=0.5):
@@ -188,37 +169,59 @@ class YTDLSource(discord.PCMVolumeTransformer):
         self.url = data.get('url')
 
     @classmethod
-    async def from_url(cls, url, *, loop=None, stream=False, ctx):
-        loop = loop or asyncio.get_event_loop()
-       
+    async def get_metadata(cls, url, *, loop=None, stream=False):
+        
         try: get(url) # check if the url is valid or is a search query
         except:
             data = await loop.run_in_executor(None, lambda: ytdl.extract_info(f"ytsearch:{url}", download=not stream)['entries'][0])
         else:
             data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
 
-        
+        return data
+
+    @classmethod
+    def make_player(cls, data, stream):
+        filename = data['url'] if stream else ytdl.prepare_filename(data)
+        player = cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
+
+        return player
+
+    @classmethod
+    def play_or_queue(cls, vc, player, ctx):
+        if vc.is_playing() or vc.is_paused():
+            bot.music_players[ctx.guild.id].queue.push(player)
+
+        else:
+            vc.play(player, after=lambda e: asyncio.run_coroutine_threadsafe(bot.music_players[ctx.guild.id].dequeue_and_play(ctx), bot.loop))
+
+    @classmethod
+    async def build_queue(cls, url, *, loop=None, stream=False, ctx):
+        loop = loop or asyncio.get_event_loop()
+       
+        data = await cls.get_metadata(url, loop=loop, stream=stream) # returns metadata of a given url
+        voice_channel = ctx.message.guild.voice_client
 
         if 'entries' in data: # if there is a list of songs in the data (data is a playlist)
 
             for item in range(len(data['entries'])): # for every song in the playlist
                 if item == 0:
-                    data0 = data['entries'][item] # play the first item
-                    filename = data0['url'] if stream else ytdl.prepare_filename(data0)
-                    player = cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data0) # create the player object
+                    data0 = data['entries'][item] # get the first song in the playlist
+                    player = cls.make_player(data0, stream)
+                    cls.play_or_queue(voice_channel, player, ctx)
+                    
 
                 else:
                     data_queue = (data['entries'][item]) # queue the remaining items
-                    filename = data_queue['url'] if stream else ytdl.prepare_filename(data_queue)
-                    player_queue = cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data_queue)
+                    player_queue = cls.make_player(data_queue, stream)
                     bot.music_players[ctx.guild.id].queue.push(player_queue)
 
 
         else: 
-            filename = data['url'] if stream else ytdl.prepare_filename(data)
-            player = cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data) # create the player object
+            player = cls.make_player(data, stream)
+            cls.play_or_queue(voice_channel, player, ctx)
         
-        return player
+
+        return
 
 
 class playbackUI(discord.ui.View):
@@ -252,13 +255,6 @@ class invalidchannel(commands.CheckFailure):
 
 
 ######################## Checks ########################
-
-
-# def check_channel():
-#     def predicate(ctx):
-#         if not (ctx.channel.id == command_channel or ctx.channel.id == testing_channel):
-#             return False
-#     return commands.check(predicate)
 
 
 def check_channel():
