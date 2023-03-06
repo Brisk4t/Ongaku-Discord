@@ -31,10 +31,9 @@ ytdl = youtube_dl.YoutubeDL(ytdl_opts) # make ytdl object
 # Initialize discord API objects
 load_dotenv()
 intents = discord.Intents.all()
-command_channel = int(os.getenv('COMMAND_CHANNEL'))
-testing_channel = int(os.getenv('TESTING_CHANNEL'))
-TOKEN = os.getenv('DISCORD_TOKEN') # Get token from .env
-bot = commands.Bot(command_prefix="!", intents=intents) # Discord interaction object & load default intents
+command_prefix = os.getenv('COMMAND_PREFIX_DEV')
+TOKEN = os.getenv('DEV_TOKEN') # Get token from .env
+bot = commands.Bot(command_prefix=command_prefix, intents=intents) # Discord interaction object & load default intents
 
 
 
@@ -89,6 +88,10 @@ class MusicPlayer():
             voice_channel = ctx.message.guild.voice_client
             voice_channel.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(self.dequeue_and_play(ctx), bot.loop))
             embed = generate_embed(ctx, self.queue, source)
+            await bot.global_embeds[ctx.guild.id].edit(embed=embed)
+        
+        else:
+            embed = generate_embed()
             await bot.global_embeds[ctx.guild.id].edit(embed=embed)
             
 
@@ -266,7 +269,7 @@ def check_channel():
 
 @bot.check
 async def checkchannel(ctx):
-    if not (ctx.channel.id in bot.command_channels or ctx.channel.id == testing_channel):
+    if not (ctx.channel.id in bot.command_channels):
             raise invalidchannel("Invalid Channel")
     return True
 
@@ -283,7 +286,7 @@ async def setup():
 
     for guild in bot.guilds:
         
-        bot.command_channels.append((discord.utils.get(guild.channels, name="ongaku-commands")).id)
+        bot.command_channels.append((discord.utils.get(guild.channels, name="ongaku-dev")).id)
         bot.music_players[guild.id]= MusicPlayer()
 
     print(bot.command_channels)
@@ -324,14 +327,33 @@ async def on_command_error(ctx, error):
 
 @bot.event
 async def on_message(message):
-    if (message.author.id != bot.user.id) and not (message.content.startswith('!')) : # If the message is not sent by the bot and is not a command
-        if (message.channel.id in bot.command_channels or message.channel.id == testing_channel): # if the message is sent in the command or testing channel
+    if (message.author.id != bot.user.id) and not (message.content.startswith(command_prefix)) : # If the message is not sent by the bot and is not a command
+        if (message.channel.id in bot.command_channels): # if the message is sent in the command channel
             ctx = await bot.get_context(message) # Get message
             await bot.music_players[ctx.guild.id].search_play(ctx, message.content)
             await ctx.message.delete()
 
     await bot.process_commands(message) # prevents on_message from overriding on_command
 
+
+@bot.event
+async def on_voice_state_update(member, before, after):
+
+    if (member.id != bot.user.id):
+        return
+    
+    elif before.channel is None:
+        voice = after.channel.guild.voice_client
+        time = 0
+        while True:
+            await asyncio.sleep(1)
+            time = time + 1
+            if voice.is_playing() and not voice.is_paused():
+                time = 0
+            if time == 300: # 5 Minutes
+                await voice.disconnect()
+            if not voice.is_connected():
+                break
 
 
 @bot.command(brief='Responds with a test message', category="Playback")
@@ -383,10 +405,9 @@ async def next(ctx):
 
 @bot.command(hidden=True)
 async def reset(ctx):
-    if(ctx.author.id == ctx.guild.owner):
-        await ctx.message.delete()
-        await setup()
-        
+    await ctx.message.delete()
+    await setup()
+    
 
 
 ######################## Embed ########################
