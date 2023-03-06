@@ -315,6 +315,7 @@ async def on_ready(): # On connect
 
 @bot.event
 async def on_guild_join(Guild): # On connecting to server
+    bot.music_players[Guild.id] = MusicPlayer()
     
 @bot.event
 async def on_command_error(ctx, error):
