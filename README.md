@@ -23,6 +23,13 @@
 
 <h2> Installation </h2>
 
-* Run the docker image
+* Clone repository
+* Create .env in **ongaku** directory with the following entries:
+
+'''
+DISCORD_TOKEN = <YOUR TOKEN HERE>
+COMMAND_PREFIX = <COMMAND PREFIX CHARACTER FOR BOT (!,/,@,etc.)
+'''
+
 * Make a text channel called ongaku-commands
 * Invite the bot to the server
