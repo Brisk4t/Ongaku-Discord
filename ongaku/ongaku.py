@@ -283,7 +283,7 @@ async def setup():
 
     for guild in bot.guilds:
         
-        bot.command_channels.append((discord.utils.get(guild.channels, name="ongaku-dev")).id)
+        bot.command_channels.append((discord.utils.get(guild.channels, name="ongaku-commands")).id)
         bot.music_players[guild.id]= MusicPlayer()
 
     print(bot.command_channels)
