@@ -33,7 +33,7 @@ load_dotenv()
 intents = discord.Intents.all()
 command_prefix = os.getenv('COMMAND_PREFIX')
 TOKEN = os.getenv('DISCORD_TOKEN') # Get token from .env
-bot = commands.Bot(command_prefix=command>>>>>>> Brisk4t-Development_prefix, intents=intents) # Discord interaction object & load default intents
+bot = commands.Bot(command_prefix=command_prefix, intents=intents) # Discord interaction object & load default intents
 
 
 
