@@ -129,7 +129,7 @@ class MusicPlayer():
     async def pause_song(self, ctx):
         voice_client = ctx.message.guild.voice_client
         if voice_client.is_playing():
-            await voice_client.pause()
+            voice_client.pause()
         
         elif not voice_client.is_playing and not voice_client.is_paused:
             await ctx.send("Ongaku is not playing anything.", delete_after=5)
@@ -313,6 +313,9 @@ async def on_ready(): # On connect
     await setup()
 
 
+@bot.event
+async def on_guild_join(Guild): # On connecting to server
+    
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, invalidchannel):
