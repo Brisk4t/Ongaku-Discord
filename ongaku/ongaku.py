@@ -37,6 +37,7 @@ bot = commands.Bot(command_prefix=command_prefix, intents=intents) # Discord int
 
 
 
+
 ######################## Classes ########################
 class queue():
     def __init__(self):
