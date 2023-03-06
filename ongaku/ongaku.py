@@ -31,7 +31,6 @@ ytdl = youtube_dl.YoutubeDL(ytdl_opts) # make ytdl object
 # Initialize discord API objects
 load_dotenv()
 intents = discord.Intents.all()
-testing_channel = int(os.getenv('TESTING_CHANNEL'))
 TOKEN = os.getenv('DISCORD_TOKEN') # Get token from .env
 bot = commands.Bot(command_prefix="!", intents=intents) # Discord interaction object & load default intents
 
