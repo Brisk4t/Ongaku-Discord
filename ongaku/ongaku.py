@@ -503,10 +503,10 @@ async def shuffle(ctx):
     await bot.music_players[ctx.guild.id].shuffle_queue(ctx)
 
 
-@bot.command(aliases=["setup"])
-async def reset(ctx):
-    await ctx.message.delete()
-    await format_command_channel(ctx.guild)
+# @bot.command(aliases=["setup"])
+# async def reset(ctx):
+#     await ctx.message.delete()
+#     await format_command_channel(ctx.guild)
     
 
 
