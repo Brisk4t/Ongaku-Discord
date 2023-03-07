@@ -32,8 +32,9 @@ ytdl = youtube_dl.YoutubeDL(ytdl_opts) # make ytdl object
 # Initialize discord API objects
 load_dotenv()
 intents = discord.Intents.all()
-command_prefix = os.getenv('COMMAND_PREFIX_DEV')
-TOKEN = os.getenv('DEV_TOKEN') # Get token from .env
+command_prefix = os.getenv('COMMAND_PREFIX')
+command_channel_name = "ongaku-commands"
+TOKEN = os.getenv('DISCORD_TOKEN') # Get token from .env
 bot = commands.Bot(command_prefix=command_prefix, intents=intents) # Discord interaction object & load default intents
 
 
@@ -343,7 +344,7 @@ def check_channel():
 
 
 async def format_command_channel(guild):
-    command_channel = (discord.utils.get(guild.channels, name="ongaku-dev"))
+    command_channel = (discord.utils.get(guild.channels, name=command_channel_name))
 
     if command_channel not in bot.command_channels:
         bot.command_channels.append(command_channel.id)
@@ -378,7 +379,7 @@ async def setup():
 
     for guild in bot.guilds:
         
-        bot.command_channels.append((discord.utils.get(guild.channels, name="ongaku-dev")).id)
+        bot.command_channels.append((discord.utils.get(guild.channels, name=command_channel_name)).id)
         bot.music_players[guild.id]= MusicPlayer()
 
     print(bot.command_channels)
