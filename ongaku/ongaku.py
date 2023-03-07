@@ -5,7 +5,8 @@ from dotenv import load_dotenv
 from discord.ext import commands
 import yt_dlp as youtube_dl
 from requests import get
-
+from collections import deque
+import random
 
 ytdl_opts = {
     'format': 'bestaudio/best', # Audio quality
@@ -31,8 +32,8 @@ ytdl = youtube_dl.YoutubeDL(ytdl_opts) # make ytdl object
 # Initialize discord API objects
 load_dotenv()
 intents = discord.Intents.all()
-command_prefix = os.getenv('COMMAND_PREFIX')
-TOKEN = os.getenv('DISCORD_TOKEN') # Get token from .env
+command_prefix = os.getenv('COMMAND_PREFIX_DEV')
+TOKEN = os.getenv('DEV_TOKEN') # Get token from .env
 bot = commands.Bot(command_prefix=command_prefix, intents=intents) # Discord interaction object & load default intents
 
 
@@ -40,14 +41,27 @@ bot = commands.Bot(command_prefix=command_prefix, intents=intents) # Discord int
 ######################## Classes ########################
 class queue():
     def __init__(self):
-        self.song_queue = []
+        self.song_queue = deque()
         self.len = 0
     
-    def pop(self):
-        self.len -= 1
-        return self.song_queue.pop(0)
-        
+    def pop(self, index=0):
+        if self.len >= 1:
+            self.len -= 1
+            
+            if index != 0:
+                item = self.song_queue[index]
+                del self.song_queue[index]
+                self.song_queue.appendleft(item)
 
+            else:
+                return self.song_queue.popleft()
+        
+        else:
+            raise IndexError()
+
+    def pushnext(self, player):
+        self.len += 1
+        self.song_queue.appendleft(player)
 
     def push(self, player):
         self.len += 1
@@ -56,10 +70,58 @@ class queue():
     def length(self):
         return self.len
 
+    def clear(self):
+        self.len = 0
+        self.song_queue.clear()
+        return
+
+    # def shuffle_v2(self):
+    #     """
+    #     Implements v2.1 but generalizes the probability of reshuffling.
+    #     :param (dict) playlist: Dictionary of track information, including the track data.
+    #     :return (list): Permutation of tracks to shuffle through.
+    #     """
+    #     track_permutation = []
+    #     new_queue = deque()
+
+    #     current_position = 1
+    #     queue_length = self.len
+
+
+    #     if queue_length in [0, 1]:
+    #       return self.song_queue
+
+    #     while len(track_permutation) < queue_length:
+    #         print("track_permutations", track_permutation)
+    #         shuffle_position = random.randint(0, queue_length - 1) # generate a poistion index x where 0 < x < len
+    #         print("Shuffle_position 1:", shuffle_position)
+    #         delta_position = abs(shuffle_position - current_position) # get distance between items before and after shuffle
+    #         print("Delta", delta_position)
+    #         print(shuffle_position not in track_permutation)
+    #         if not (shuffle_position in track_permutation):
+    #             randomfloat = random.random()
+    #             print((1 / delta_position+1))
+    #             print("Randomfloat:", randomfloat)
+    #             if ((queue_length > 2) and randomfloat < (float(1 / delta_position+1))) :
+    #                 shuffle_position = random.randint(0, queue_length - 1)
+    #                 print("Shuffle_position :", shuffle_position)
+    #             track_permutation.append(shuffle_position)
+
+    #     print("Track Permutation:", track_permutation)
+
+    #     for index in track_permutation:
+    #         new_queue.append(self.song_queue[index])
+
+    #     print("New Queue:", new_queue)
+    #     self.song_queue = new_queue
+
+    #     return
+
     def display(self): # returns a alist of the song titles
         titles = []
-        for song in self.song_queue:
-            titles.append(song.title) 
+        for song in range(self.len):
+            questring = str(song+1) + ". " + self.song_queue[song].title
+            titles.append(questring) 
 
         return titles
 
@@ -81,15 +143,16 @@ class MusicPlayer():
 
 
 
-    async def dequeue_and_play(self, ctx):
+    async def dequeue_and_play(self, ctx, index=0):
         if (self.queue.len >= 1):
-            source = self.queue.pop()
+            source = self.queue.pop(index)
             voice_channel = ctx.message.guild.voice_client
             voice_channel.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(self.dequeue_and_play(ctx), bot.loop))
             embed = generate_embed(ctx, self.queue, source)
             await bot.global_embeds[ctx.guild.id].edit(embed=embed)
         
         else:
+            print("Else:")
             embed = generate_embed()
             await bot.global_embeds[ctx.guild.id].edit(embed=embed)
             
@@ -99,10 +162,7 @@ class MusicPlayer():
 
         await self.join(ctx) # wait to join voice channel
         voice_channel = ctx.message.guild.voice_client # get the channel
-        
-        view = playbackUI(timeout=None)
-        view.ctx = ctx
-        view.musicplayer = bot.music_players[ctx.guild.id]
+        view = generate_view(ctx)
         
         async with ctx.typing(): # show typing status while this process completes (basically 'loading')
            
@@ -113,8 +173,12 @@ class MusicPlayer():
 
     async def stop_song(self, ctx):
         voice_client = ctx.message.guild.voice_client
-        if voice_client.is_playing():
+        if voice_client.is_playing() or voice_client.is_paused():
+            self.queue.clear()
             voice_client.stop()
+            view = generate_view(ctx.guild.id)
+
+            await bot.global_embeds[ctx.guild.id].edit(embed=generate_embed(), view=view)
         else:
             await ctx.send("Ongaku is not playing anything.", delete_after=5)
 
@@ -137,26 +201,38 @@ class MusicPlayer():
             await ctx.send("No song to resume.", delete_after=5)
 
 
-    async def next_song(self, ctx):
-        if self.queue.display():
-            await self.stop_song(ctx)
-            await self.dequeue_and_play(ctx)
+    async def next_song(self, ctx, index):
+        voice_client = ctx.message.guild.voice_client
+
+        if self.queue.len >=1 and index <= self.queue.len:
             
-        
+            if index != 0:
+                self.queue.pop(index)
+            
+            await voice_client.stop() # stop triggers the "after" of dequeue_and_play 
+            
+        elif self.queue.len >=1 and index > self.queue.len:
+            await ctx.send("Queue item unavailable", delete_after=5)
+
         else:
             await ctx.send("No next item in queue", delete_after=5)
 
+    async def shuffle_queue(self, ctx):
+        print("Before queue shuffle:",self.queue.display())
+        self.queue.shuffle_v2()
+        print("After Queue Shuffle:", self.queue.display())
+
+        voice_channel = ctx.message.guild.voice_client
+        view = generate_view(ctx)
+        await bot.global_embeds[ctx.guild.id].edit(embed=generate_embed(ctx, self.queue, player=voice_channel.source), view=view)
+
     async def disconnect_bot(self, ctx):
-        print("I am here")
         if not ctx.message.author.voice:
-            print("I am here2")
             await ctx.send("Ongaku is not connected to your voice channel.", delete_after=5)
             return
         
         else:
-            print("I am here3")
             await ctx.guild.voice_client.disconnect()
-            print("Here")
 
 
 
@@ -245,7 +321,9 @@ class playbackUI(discord.ui.View):
     @discord.ui.button(label=None, emoji=":hydra_skip:971015680654729216", style=discord.ButtonStyle.secondary)
     async def nextbutton(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        await self.musicplayer.next_song(self.ctx)
+        await self.musicplayer.next_song(self.ctx, 0)
+
+    
 
 
 class invalidchannel(commands.CheckFailure):
@@ -261,6 +339,21 @@ def check_channel():
         if not (ctx.channel.id in bot.command_channels):
             return False
     return commands.check(predicate)
+
+
+async def format_command_channel(guild):
+    command_channel = (discord.utils.get(guild.channels, name="ongaku-dev"))
+    bot.command_channels.append(command_channel.id)
+    bot.music_players[guild.id] = MusicPlayer()
+
+    messages = [msg async for msg in command_channel.history(limit=100, oldest_first=True)]
+    for msg in messages:
+        await msg.delete()
+
+    embed = generate_embed
+    view = generate_view(command_channel)
+
+    bot.global_embeds[guild.id] = await command_channel.send(embed=embed, view=view)
 
 
 @bot.check
@@ -299,10 +392,9 @@ async def setup():
         for msg in messages:
             await msg.delete()
 
-        embed = generate_embed() 
-        view = playbackUI(timeout=None)
-        view.musicplayer=bot.music_players[channel.guild.id]
-        view.ctx = channel
+        embed = generate_embed()
+        view = generate_view(channel)
+
         bot.global_embeds[channel.guild.id] = await channel.send(embed=embed, view=view)
 
 
@@ -312,13 +404,15 @@ async def on_ready(): # On connect
     await setup()
 
 
+@bot.event
+async def on_guild_join(guild): # On connecting to server
+    format_command_channel(guild)
 
 
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, invalidchannel):
         await ctx.send("Please use the Ongaku Commands channel for bot commands.", delete_after=5)
-
 
 
 @bot.event
@@ -346,7 +440,8 @@ async def on_voice_state_update(member, before, after):
             time = time + 1
             if voice.is_playing() and not voice.is_paused():
                 time = 0
-            if time == 300: # 5 Minutes
+            if time == 600: # 5 Minutes
+                await bot.music_players[after.channel.guild.id].stop_song(after)
                 await voice.disconnect()
             if not voice.is_connected():
                 break
@@ -393,16 +488,22 @@ async def resume(ctx):
     await bot.music_players[ctx.guild.id].resume_song(ctx)
     
 
-@bot.command(brief="Next song")
-async def next(ctx):
+@bot.command(brief="Next song or song at queue position")
+async def next(ctx, index=1):
     await ctx.message.delete()
-    await bot.music_players[ctx.guild.id].next_song(ctx)
+    await bot.music_players[ctx.guild.id].next_song(ctx, index-1)
 
 
-@bot.command(hidden=True)
+@bot.command(brief="Shuffles Playlist")
+async def shuffle(ctx):
+    await ctx.message.delete()
+    await bot.music_players[ctx.guild.id].shuffle_queue(ctx)
+
+
+@bot.command(aliases=["setup"])
 async def reset(ctx):
     await ctx.message.delete()
-    await setup()
+    await format_command_channel(ctx.guild)
     
 
 
@@ -432,6 +533,13 @@ def generate_embed(ctx=None, queue=None, player=None):
 
     return embed
 
+
+def generate_view(ctx):
+    view = playbackUI(timeout=None)
+    view.musicplayer=bot.music_players[ctx.guild.id]
+    view.ctx = ctx
+    
+    return view
 
 
 bot.run(TOKEN)
