@@ -344,14 +344,16 @@ def check_channel():
 
 async def format_command_channel(guild):
     command_channel = (discord.utils.get(guild.channels, name="ongaku-dev"))
-    bot.command_channels.append(command_channel.id)
-    bot.music_players[guild.id] = MusicPlayer()
+
+    if command_channel not in bot.command_channels:
+        bot.command_channels.append(command_channel.id)
+        bot.music_players[guild.id] = MusicPlayer()
 
     messages = [msg async for msg in command_channel.history(limit=100, oldest_first=True)]
     for msg in messages:
         await msg.delete()
 
-    embed = generate_embed
+    embed = generate_embed()
     view = generate_view(command_channel)
 
     bot.global_embeds[guild.id] = await command_channel.send(embed=embed, view=view)
@@ -407,7 +409,7 @@ async def on_ready(): # On connect
 
 @bot.event
 async def on_guild_join(guild): # On connecting to server
-    format_command_channel(guild)
+    await format_command_channel(guild)
 
 
 @bot.event
