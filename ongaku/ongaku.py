@@ -32,9 +32,9 @@ ytdl = youtube_dl.YoutubeDL(ytdl_opts) # make ytdl object
 # Initialize discord API objects
 load_dotenv()
 intents = discord.Intents.all()
-command_prefix = os.getenv('COMMAND_PREFIX')
-command_channel_name = "ongaku-commands"
-TOKEN = os.getenv('DISCORD_TOKEN') # Get token from .env
+command_prefix = os.getenv('COMMAND_PREFIX_DEV')
+command_channel_name = "ongaku-dev"
+TOKEN = os.getenv('DEV_TOKEN') # Get token from .env
 bot = commands.Bot(command_prefix=command_prefix, intents=intents) # Discord interaction object & load default intents
 
 
