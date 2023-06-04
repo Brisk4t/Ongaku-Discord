@@ -1,12 +1,13 @@
 import os
 import discord
 import asyncio
+import lavalink
 from dotenv import load_dotenv
 from discord.ext import commands
 import yt_dlp as youtube_dl
 from requests import get
 from collections import deque
-import random
+import re
 
 ytdl_opts = {
     'format': 'bestaudio/best', # Audio quality
@@ -37,6 +38,14 @@ command_channel_name = "ongaku-dev"
 TOKEN = os.getenv('DEV_TOKEN') # Get token from .env
 bot = commands.Bot(command_prefix=command_prefix, intents=intents) # Discord interaction object & load default intents
 
+url_rx = re.compile(r'https?://(?:www\.)?.+')
+
+
+#Initialize Lavlink Connection
+bot.lava = lavalink.Client(bot.user.id)
+bot.lava.add_node('localhost', 8000, 'development', 'na', 'node1')
+bot.add_listener(bot.lava.voice_update_handler, 'on_socket_response')
+#bot.lava.add_event_hook(track_hook) # event handler for diconnect when queue ends
 
 
 
@@ -139,6 +148,8 @@ class MusicPlayer():
             return
         
         elif not ctx.guild.voice_client in bot.voice_clients: # if the bot is not connected
+            player = bot.lava.player_manager.create(ctx.guild.id)
+            player.store('channel', ctx.guild.id)
             await ctx.message.author.voice.channel.connect() # connect to the same channel as author
             
         return
@@ -158,6 +169,34 @@ class MusicPlayer():
             embed = generate_embed()
             await bot.global_embeds[ctx.guild.id].edit(embed=embed)
             
+
+    async def lavaplay(self, ctx, query):
+
+        player = bot.lava.player_manager.get(ctx.guild.id)
+        query = query.strip('<>')
+
+        if not url_rx.match(query):
+            query = f'ytsearch:{query}'
+
+        results = await player.node.get_tracks(query)
+
+        if not results or not results.tracks:
+            return await ctx.send('Nothing found!')
+        
+        if results.load_type == 'PLAYLIST_LOADED':
+            tracks = results.tracks
+
+            for track in tracks:
+                # Add all of the tracks from the playlist to the queue.
+                player.add(requester=ctx.author.id, track=track)
+
+        else:
+            track = results.tracks[0]
+            player.add(requester=ctx.author.id, track=track)
+
+        
+        if not player.isplaying:
+            await player.play()
 
 
     async def search_play(self, ctx, url):
@@ -461,7 +500,7 @@ async def test(ctx): # if !test is sent
 @bot.command(brief='Play song from search query or url') # if !play is sent
 async def play(ctx, *, url):
    await ctx.message.delete()
-   await bot.music_players[ctx.guild.id].search_play(ctx, url)
+   await bot.music_players[ctx.guild.id].lavaplay(ctx, url)
    
 
 
