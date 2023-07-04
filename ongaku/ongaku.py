@@ -41,10 +41,7 @@ bot = commands.Bot(command_prefix=command_prefix, intents=intents) # Discord int
 url_rx = re.compile(r'https?://(?:www\.)?.+')
 
 
-#Initialize Lavlink Connection
-bot.lava = lavalink.Client(bot.user.id)
-bot.lava.add_node('localhost', 8000, 'development', 'na', 'node1')
-bot.add_listener(bot.lava.voice_update_handler, 'on_socket_response')
+
 #bot.lava.add_event_hook(track_hook) # event handler for diconnect when queue ends
 
 
@@ -172,13 +169,18 @@ class MusicPlayer():
 
     async def lavaplay(self, ctx, query):
 
+        await self.join(ctx)
+        voice_channel = ctx.message.guild.voice_client
+        
         player = bot.lava.player_manager.get(ctx.guild.id)
+
         query = query.strip('<>')
 
         if not url_rx.match(query):
             query = f'ytsearch:{query}'
 
         results = await player.node.get_tracks(query)
+        print(results)
 
         if not results or not results.tracks:
             return await ctx.send('Nothing found!')
@@ -194,9 +196,10 @@ class MusicPlayer():
             track = results.tracks[0]
             player.add(requester=ctx.author.id, track=track)
 
-        
-        if not player.isplaying:
-            await player.play()
+        print(results.tracks)
+
+
+        await player.play()
 
 
     async def search_play(self, ctx, url):
@@ -406,11 +409,27 @@ async def checkchannel(ctx):
     return True
 
 
+async def track_hook(event):
+        if isinstance(event, lavalink.events.QueueEndEvent):
+            # When this track_hook receives a "QueueEndEvent" from lavalink.py
+            # it indicates that there are no tracks left in the player's queue.
+            # To save on resources, we can tell the bot to disconnect from the voicechannel.
+            guild_id = event.player.guild_id
+            guild = self.bot.get_guild(guild_id)
+            await guild.voice_client.disconnect(force=True)
+
 ########################### Event Handlers ###########################
 
 
 
 async def setup():
+    #Initialize Lavlink Connection
+    bot.lava = lavalink.Client(bot.user.id)
+    bot.lava.add_node('0.0.0.0', 8000, 'development', 'na', 'node1')
+    bot.add_listener(bot.lava.voice_update_handler, 'on_socket_response')
+    bot.lava.add_event_hook(track_hook)
+
+
     bot.command_channels = []
     bot.global_embeds = {}
     bot.music_players = {}
@@ -425,6 +444,7 @@ async def setup():
 
     print(f'{bot.user} has connected to discord')
     
+    print("Command Prefix:",command_prefix)
 
     for item in bot.command_channels:
         channel = bot.get_channel(item)
@@ -499,8 +519,9 @@ async def test(ctx): # if !test is sent
 
 @bot.command(brief='Play song from search query or url') # if !play is sent
 async def play(ctx, *, url):
-   await ctx.message.delete()
-   await bot.music_players[ctx.guild.id].lavaplay(ctx, url)
+    await bot.music_players[ctx.guild.id].lavaplay(ctx, url)
+    await ctx.message.delete()
+   
    
 
 
